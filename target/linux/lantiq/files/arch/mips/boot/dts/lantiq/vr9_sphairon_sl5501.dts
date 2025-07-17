@@ -1,0 +1,306 @@
+/dts-v1/;
+
+#include "vr9.dtsi" // Basis-Definition für den Lantiq VR9 SoC
+
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/leds/common.h>
+
+/ {
+	model = "SL5501";
+	compatible = "sphairon,sl5501", "lantiq,xway", "lantiq,vr9";
+
+	chosen {
+		bootargs = "console=ttyLTQ0,115200";
+	};
+
+	aliases {
+		led-boot = &led_power_green;
+		led-failsafe = &led_power_red;
+		led-running = &led_power_green;
+		led-upgrade = &led_info_red;
+	};
+
+	memory@0 {
+		device_type = "memory";
+		// RAM-Größe auf 128MB gesetzt
+		reg = <0x0 0x8000000>;
+	};
+
+	/* Tasten, die an GPIOs angeschlossen sind */
+	keys {
+		compatible = "gpio-keys-polled";
+		poll-interval = <100>;
+
+		reset {
+			label = "reset";
+			gpios = <&gpio 47 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_RESTART>;
+		};
+
+		wlan {
+			label = "wlan";
+			gpios = <&gpio 45 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_WLAN>;
+		};
+
+		wps {
+			label = "wps";
+			gpios = <&gpio 46 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_WPS_BUTTON>;
+		};
+	};
+
+	/* LEDs, die direkt an GPIOs angeschlossen sind */
+	leds {
+		compatible = "gpio-leds";
+
+		led_power_green: power_green {
+			label = "green:power";
+			gpios = <&gpio 3 GPIO_ACTIVE_HIGH>;
+			default-state = "on";
+		};
+
+		led_power_red: power_red {
+			label = "red:power";
+			gpios = <&gpio 19 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_info_green: info_green {
+			label = "green:info";
+			gpios = <&gpio 20 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_info_red: info_red {
+			label = "red:info";
+			gpios = <&gpio 21 GPIO_ACTIVE_HIGH>;
+		};
+
+		wlan_green {
+			label = "green:wlan";
+			gpios = <&gpio 29 GPIO_ACTIVE_HIGH>;
+		};
+
+		wps_green {
+			label = "green:wps";
+			gpios = <&gpio 30 GPIO_ACTIVE_HIGH>;
+		};
+        
+		web_green {
+			label = "green:web";
+			gpios = <&gpio 27 GPIO_ACTIVE_HIGH>;
+		};
+        
+		web_red {
+			label = "red:web";
+			gpios = <&gpio 28 GPIO_ACTIVE_HIGH>;
+		};
+
+		usb_green {
+			label = "green:usb";
+			gpios = <&gpio 32 GPIO_ACTIVE_HIGH>;
+		};
+	};
+
+	/* GPIO-basierte Spannungsregler für USB-Stromversorgung und WLAN */
+	regulators {
+		wlan_pwr: regulator-wlan-pwr {
+			compatible = "regulator-fixed";
+			regulator-name = "WLAN_PWR";
+			gpios = <&gpio 37 GPIO_ACTIVE_HIGH>;
+			enable-active-high;
+		};
+
+		usb0_vbus: regulator-usb0-vbus {
+			compatible = "regulator-fixed";
+			regulator-name = "USB0_VBUS";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
+			gpios = <&gpio 41 GPIO_ACTIVE_HIGH>;
+			enable-active-high;
+		};
+
+		usb1_vbus: regulator-usb1-vbus {
+			compatible = "regulator-fixed";
+			regulator-name = "USB1_VBUS";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
+			gpios = <&gpio 33 GPIO_ACTIVE_HIGH>;
+			enable-active-high;
+		};
+	};
+};
+
+/* Pin-Konfiguration und alternative Funktionen */
+&gpio {
+	pinctrl-names = "default";
+	pinctrl-0 = <&state_default>;
+	state_default: pinmux {
+		/* WLAN-Reset (GPIO 15) und SLIC-Reset (GPIO 31) */
+		wlan_rst {
+			lantiq,pins = "io15";
+			lantiq,output = <1>;
+			lantiq,pull = <0>;
+			lantiq,active-low;
+		};
+		slic_rst {
+			lantiq,pins = "io31";
+			lantiq,output = <1>;
+			lantiq,pull = <0>;
+			lantiq,active-low;
+		};
+
+		/* EXIN1 auf GPIO1 und EXIN2 auf GPIO2 */
+		exin1 {
+			lantiq,groups = "exin1";
+			lantiq,function = "exin";
+		};
+		exin2 {
+			lantiq,groups = "exin2";
+			lantiq,function = "exin";
+		};
+	};
+};
+
+/* Ethernet-Switch-Konfiguration */
+&gswip {
+	pinctrl-0 = <&mdio_pins>,
+		    <&gphy0_led1_pins>, <&gphy0_led2_pins>,
+		    <&gphy1_led1_pins>, <&gphy1_led2_pins>;
+	pinctrl-names = "default";
+};
+
+&gswip_mdio {
+	phy0: ethernet-phy@0 {
+		reg = <0x0>;
+	};
+	phy1: ethernet-phy@1 {
+		reg = <0x1>;
+	};
+	phy5: ethernet-phy@5 {
+		reg = <0x5>;
+	};
+	phy11: ethernet-phy@11 {
+		reg = <0x11>;
+	};
+	phy13: ethernet-phy@13 {
+		reg = <0x13>;
+	};
+};
+
+&gswip_ports {
+	port@0 {
+		reg = <0>;
+		label = "lan1";
+		phy-mode = "rgmii";
+		phy-handle = <&phy0>;
+	};
+	port@1 {
+		reg = <1>;
+		label = "lan2";
+		phy-mode = "rgmii";
+		phy-handle = <&phy1>;
+	};
+	port@2 {
+		reg = <2>;
+		label = "lan3";
+		phy-mode = "internal";
+		phy-handle = <&phy11>;
+	};
+	port@4 {
+		reg = <4>;
+		label = "lan4";
+		phy-mode = "internal";
+		phy-handle = <&phy13>;
+	};
+	port@5 {
+		reg = <5>;
+		label = "wan";
+		phy-mode = "rgmii";
+		phy-handle = <&phy5>;
+	};
+};
+
+/* SPI-Bus mit Flash-Speicher */
+&spi {
+	status = "okay";
+
+	flash@4 {
+		compatible = "jedec,spi-nor"; // Kompatibel mit "m25p80"
+		reg = <4>; // Chip-Select 4
+		spi-max-frequency = <25000000>; // Max. 25 MHz
+
+		/* Partitionierung basierend auf den U-Boot-Variablen */
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			partition@0 {
+				label = "uboot_fix";
+				reg = <0x0 0x80000>;
+				read-only;
+			};
+			partition@80000 {
+				label = "uboot_cfg";
+				reg = <0x80000 0x40000>;
+				read-only;
+			};
+			partition@c0000 {
+				label = "env";
+				reg = <0xC0000 0x10000>;
+						};
+			partition@d0000 {
+				label = "firmware";
+				reg = <0xD0000 0x3f30000>;
+			};
+		};
+	};
+};
+
+/* USB-Controller */
+&usb0 {
+	status = "okay";
+	vbus-supply = <&usb0_vbus>;
+};
+
+&usb1 {
+	status = "okay";
+	vbus-supply = <&usb1_vbus>;
+};
+
+/* LEDs am STP-Controller (Serializer) */
+&stp {
+	status = "okay";
+	
+	// Hier könnten die "ifx gpio" LEDs definiert werden
+	// Beispiel basierend auf der Annahme, dass sie am STP-Controller hängen
+	
+	led_dsl {
+		label = "green:dsl";
+		gpios = <&stp 0 GPIO_ACTIVE_HIGH>;
+	};
+	led_usb_ifx {
+		label = "green:usb_ifx";
+		gpios = <&stp 1 GPIO_ACTIVE_HIGH>;
+	};
+	led_lan2_ifx {
+		label = "green:lan2_ifx";
+		gpios = <&stp 2 GPIO_ACTIVE_HIGH>;
+	};
+	led_lan1_ifx {
+		label = "green:lan1_ifx";
+		gpios = <&stp 3 GPIO_ACTIVE_HIGH>;
+	};
+	led_phone_red {
+		label = "red:phone";
+		gpios = <&stp 4 GPIO_ACTIVE_HIGH>;
+	};
+	led_lan3_ifx {
+		label = "green:lan3_ifx";
+		gpios = <&stp 6 GPIO_ACTIVE_HIGH>;
+	};
+	led_phone_green {
+		label = "green:phone";
+		gpios = <&stp 7 GPIO_ACTIVE_HIGH>;
+	};
+};
