@@ -392,13 +392,11 @@ endef
 TARGET_DEVICES += zyxel_p-2812hnu-f3
 
 define Device/sphairon_sl5501
-  $(Device/dsa-migration)
-  DEVICE_VENDOR := sphairon
+  DEVICE_VENDOR := Sphairon
   DEVICE_MODEL := SL5501
   DEVICE_DTS := vr9_sphairon_sl5501
-  DEVICE_PACKAGES := \
-    kmod-ltq-vr9-pci kmod-usb-dwc2 kmod-leds-gpio kmod-gpio-button-hotplug \
-    kmod-rt2800-pci wpad-basic-wolfssl iwinfo
-  IMAGE_SIZE := 64512k
+  DEVICE_PACKAGES := kmod-rt2800-pci wpad-basic-mbedtls kmod-usb-dwc2
+  IMAGE_SIZE := 64704k
+#  IMAGE/sysupgrade.bin := append-kernel | append-rootfs | pad-to $$(IMAGE_SIZE) | append-metadata
 endef
 TARGET_DEVICES += sphairon_sl5501
