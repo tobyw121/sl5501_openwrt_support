@@ -399,6 +399,6 @@ define Device/sphairon_sl5501
   DEVICE_PACKAGES := \
     kmod-ltq-vr9-pci kmod-usb-dwc2 kmod-leds-gpio kmod-gpio-button-hotplug \
     kmod-rt2800-pci wpad-basic-wolfssl iwinfo
-  IMAGE_SIZE := 30720k
+  IMAGE_SIZE := 64512k
 endef
 TARGET_DEVICES += sphairon_sl5501
