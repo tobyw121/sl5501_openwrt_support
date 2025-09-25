@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MiniUI</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>MiniUI</h1>
+    <p class="tagline">Lightweight OpenWrt management interface</p>
+  </header>
+
+  <main>
+    <section id="login-section" class="card">
+      <h2>Log in</h2>
+      <form id="login-form">
+        <label>
+          Username
+          <input type="text" id="username" autocomplete="username" value="root" required>
+        </label>
+        <label>
+          Password
+          <input type="password" id="password" autocomplete="current-password" required>
+        </label>
+        <button type="submit">Sign in</button>
+        <p id="login-error" class="error" hidden></p>
+      </form>
+    </section>
+
+    <section id="dashboard" class="card" hidden>
+      <h2>System status</h2>
+      <dl class="status-list">
+        <div><dt>Hostname</dt><dd id="hostname">-</dd></div>
+        <div><dt>Uptime</dt><dd id="uptime">-</dd></div>
+        <div><dt>Load</dt><dd id="load">-</dd></div>
+        <div><dt>Kernel</dt><dd id="kernel">-</dd></div>
+        <div><dt>Memory</dt><dd id="memory">-</dd></div>
+      </dl>
+      <button id="reboot-btn" class="danger">Reboot</button>
+      <p id="status-error" class="error" hidden></p>
+    </section>
+
+    <section id="network" class="card" hidden>
+      <h2>LAN configuration</h2>
+      <form id="lan-form">
+        <label>
+          IPv4 address
+          <input type="text" id="lan-ip" required>
+        </label>
+        <label>
+          Netmask
+          <input type="text" id="lan-mask" required>
+        </label>
+        <div class="actions">
+          <button type="submit">Save</button>
+          <button type="button" id="lan-reload">Reload network</button>
+        </div>
+        <p id="lan-message" class="message" hidden></p>
+      </form>
+    </section>
+
+    <section id="upgrade" class="card" hidden>
+      <h2>Firmware upgrade</h2>
+      <form id="upgrade-form">
+        <label>
+          Image URL or /tmp path
+          <input type="text" id="upgrade-source" placeholder="/tmp/firmware.bin or https://example/image.bin" required>
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" id="upgrade-keep" checked>
+          Keep current configuration
+        </label>
+        <button type="submit">Start upgrade</button>
+        <p id="upgrade-message" class="message" hidden></p>
+      </form>
+      <p class="hint">Upload firmware to <code>/tmp/</code> via SCP or provide an HTTPS URL. The router will reboot after a successful upgrade.</p>
+    </section>
+  </main>
+
+  <footer>
+    <p>MiniUI uses rpcd ACLs for least-privilege access. Adjust settings with <code>make menuconfig</code> to include or exclude the interface.</p>
+  </footer>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
