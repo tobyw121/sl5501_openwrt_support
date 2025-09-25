@@ -1,0 +1,32 @@
+#!/bin/sh
+
+set -e
+
+# Configure uhttpd to serve MiniUI on the standard HTTP port
+uci -q del uhttpd.main.listen_http
+uci -q add_list uhttpd.main.listen_http='0.0.0.0:80'
+uci -q set uhttpd.main.home='/www/miniui'
+uci -q set uhttpd.main.index_page='index.html'
+uci -q set uhttpd.main.ubus_prefix='/ubus'
+uci -q set uhttpd.main.cgi_prefix='/cgi-bin'
+
+# Remove auxiliary uhttpd sections that were created for LuCI
+for section in $(uci -q show uhttpd | sed -n "s/^uhttpd\\.\([^.=]*\)=uhttpd$/\\1/p"); do
+	[ "$section" = "main" ] && continue
+	case "$section" in
+	*luci*|luci*)
+	uci -q delete uhttpd."$section"
+		;;
+	esac
+done
+
+# Disable any luci-* configuration files to avoid re-enabling LuCI services
+for cfg in /etc/config/luci*; do
+	[ -f "$cfg" ] || continue
+	[ -f "${cfg}.disabled-miniui" ] && continue
+	mv "$cfg" "${cfg}.disabled-miniui"
+done
+
+uci -q commit uhttpd
+
+exit 0

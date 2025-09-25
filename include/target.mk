@@ -19,20 +19,27 @@ DEVICE_TYPE?=router
 # @CONFIG_* values.
 ##
 DEFAULT_PACKAGES:=\
-	base-files \
-	ca-bundle \
-	dropbear \
-	fstools \
+base-files \
+ca-bundle \
+dropbear \
+fstools \
 	libc \
 	libgcc \
 	libustream-mbedtls \
 	logd \
 	mtd \
 	netifd \
-	uci \
-	uclient-fetch \
-	urandom-seed \
-	urngd
+uci \
+uclient-fetch \
+urandom-seed \
+urngd
+
+ifeq ($(CONFIG_MINIUI_REPLACES_LUCI),y)
+  DEFAULT_PACKAGES += miniui
+  ifneq ($(filter luci,$(DEFAULT_PACKAGES)),)
+    DEFAULT_PACKAGES += -luci
+  endif
+endif
 
 ##@
 # @brief Default packages for @DEVICE_TYPE basic.

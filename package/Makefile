@@ -12,6 +12,7 @@ include $(INCLUDE_DIR)/rootfs.mk
 
 -include $(TMP_DIR)/.packagedeps
 package-y += kernel/linux
+package-y += miniui
 $(curdir)/autoremove:=1
 $(curdir)/builddirs:=$(sort $(package-) $(package-y) $(package-m))
 $(curdir)/builddirs-default:=. $(sort $(package-y) $(package-m))

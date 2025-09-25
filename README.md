@@ -91,6 +91,7 @@ For a list of supported devices see the [OpenWrt Hardware Database](https://open
 * [User Guide](https://openwrt.org/docs/guide-user/start)
 * [Developer Documentation](https://openwrt.org/docs/guide-developer/start)
 * [Technical Reference](https://openwrt.org/docs/techref/start)
+* [MiniUI overview](docs/miniui.md)
 
 ### Support Community
 
