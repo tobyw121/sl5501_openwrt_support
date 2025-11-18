@@ -18,22 +18,13 @@ config EXPERIMENTAL
 
 menu "Global build settings"
 
-config JSON_OVERVIEW_IMAGE_INFO
-bool "Create JSON info file overview per target"
-default y
-help
-  Create a JSON info file called profiles.json in the target
-  directory containing machine readable list of built profiles
-  and resulting images.
-
-config MINIUI_REPLACES_LUCI
-bool "Replace LuCI with MiniUI in default images"
-default y
-help
-  Enable this option to include the lightweight MiniUI frontend in
-  generated images and drop LuCI from the default package set. The
-  setting only affects default image manifests; LuCI can still be
-  selected manually when building a custom image.
+	config JSON_OVERVIEW_IMAGE_INFO
+		bool "Create JSON info file overview per target"
+		default y
+		help
+		  Create a JSON info file called profiles.json in the target
+		  directory containing machine readable list of built profiles
+		  and resulting images.
 
 	config JSON_CYCLONEDX_SBOM
 		bool "Create CycloneDX SBOM JSON"

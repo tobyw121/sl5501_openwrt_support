@@ -1,8 +1,0 @@
-config PACKAGE_miniui
-	bool "MiniUI lightweight web interface"
-	default y if MINIUI_REPLACES_LUCI
-	help
-	  MiniUI provides a compact management interface that can replace
-	  LuCI on systems where flash or RAM resources are scarce. When
-	  enabled it integrates with uhttpd and rpcd to expose essential
-	  status, configuration, and firmware upgrade capabilities.
