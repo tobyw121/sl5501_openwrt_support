@@ -1,0 +1,120 @@
+From 8f4a3be9a8d8b1b331c2c0a4dffbca64bf20f501 Mon Sep 17 00:00:00 2001
+From: OpenWrt SL5501 port <noreply@openwrt.local>
+Date: Fri, 28 Aug 2026 10:58:00 +0200
+Subject: [PATCH] net: dsa: lantiq_gswip: fix xRX200 PCDU5 and expose SL5501 TX diagnostics
+
+The xRX200/VR9 xMII register block is laid out as pairs:
+
+  MII_CFG0/PCDU0 = 0x00/0x01
+  MII_CFG1/PCDU1 = 0x02/0x03
+  MII_CFG5/PCDU5 = 0x0a/0x0b
+
+This is also the layout used by the Lantiq VR9 U-Boot register structure.
+The legacy Linux definition used 0x05 for PCDU5, which addresses a reserved
+word between port 1 and port 5. On the SL5501 this made a requested 1500 ps
+TX delay read back as 0x0000 and therefore never changed the real port-5 TX
+clock delay.
+
+Correct the PCDU5 offset and keep the narrow SL5501 GPL-only diagnostics used
+by the RT3662 iNIC bring-up. The SL5501 setter now verifies the actual
+hardware readback and fails with -EIO instead of claiming success when the
+field did not latch.
+---
+--- a/drivers/net/dsa/lantiq_gswip.c
++++ b/drivers/net/dsa/lantiq_gswip.c
+@@ -114,7 +114,10 @@
+ #define  GSWIP_MII_CFG_RATE_MASK	0x70
+ #define GSWIP_MII_PCDU0			0x01
+ #define GSWIP_MII_PCDU1			0x03
+-#define GSWIP_MII_PCDU5			0x05
++/* xRX200/VR9 has no ports 2..4 in the xMII block.  Port 5 starts at
++ * MII_CFG5=0x0a, followed by PCDU5=0x0b.  0x05 is a reserved word and
++ * writes there do not alter the port-5 delay on SL5501 hardware. */
++#define GSWIP_MII_PCDU5			0x0b
+ #define  GSWIP_MII_PCDU_TXDLY_MASK	GENMASK(2, 0)
+ #define  GSWIP_MII_PCDU_RXDLY_MASK	GENMASK(9, 7)
+ 
+@@ -447,6 +450,41 @@
+ 	}
+ }
+ 
++static struct gswip_priv *sl5501_gswip_priv;
++
++int lantiq_gswip_sl5501_set_port5_tx_delay(unsigned int delay_ps)
++{
++	struct gswip_priv *priv = READ_ONCE(sl5501_gswip_priv);
++	u32 expected, before, pcdu;
++
++	if (!priv)
++		return -ENODEV;
++	if (delay_ps > 3500 || delay_ps % 500)
++		return -EINVAL;
++
++	expected = delay_ps / 500;
++	before = gswip_mii_r(priv, GSWIP_MII_PCDU5);
++
++	/* TXDLY is a three-bit field in 500 ps steps; do not touch RXDLY. */
++	gswip_mii_mask_pcdu(priv, GSWIP_MII_PCDU_TXDLY_MASK,
++			     expected, 5);
++	/* __raw_readl() also flushes the MMIO write before reset release. */
++	pcdu = gswip_mii_r(priv, GSWIP_MII_PCDU5);
++
++	if ((pcdu & GSWIP_MII_PCDU_TXDLY_MASK) != expected) {
++		dev_err(priv->dev,
++			"SL5501 port5 RGMII TX delay write FAILED: %u ps, PCDU5 0x%04x->0x%04x (expected TX field 0x%x)\n",
++			delay_ps, before & 0xffff, pcdu & 0xffff, expected);
++		return -EIO;
++	}
++
++	dev_info(priv->dev,
++		 "SL5501 port5 RGMII TX delay=%u ps VERIFIED, PCDU5@0x0b 0x%04x->0x%04x\n",
++		 delay_ps, before & 0xffff, pcdu & 0xffff);
++	return 0;
++}
++EXPORT_SYMBOL_GPL(lantiq_gswip_sl5501_set_port5_tx_delay);
++
+ static int gswip_mdio_poll(struct gswip_priv *priv)
+ {
+ 	int cnt = 100;
+@@ -890,6 +928,17 @@
+ 
+ 	ds->configure_vlan_while_not_filtering = false;
+ 
++	if (of_machine_is_compatible("sphairon,sl5501")) {
++		u32 pcdu = gswip_mii_r(priv, GSWIP_MII_PCDU5);
++
++		WRITE_ONCE(sl5501_gswip_priv, priv);
++		dev_info(priv->dev,
++			 "SL5501 port5 initial PCDU5@0x0b=0x%04x (TX=%u ps RX=%u ps)\n",
++			 pcdu & 0xffff,
++			 (unsigned int)((pcdu & GSWIP_MII_PCDU_TXDLY_MASK) * 500),
++			 (unsigned int)(((pcdu & GSWIP_MII_PCDU_RXDLY_MASK) >> 7) * 500));
++	}
++
+ 	return 0;
+ }
+ 
+@@ -1789,6 +1838,23 @@
+ 	return result;
+ }
+ 
++int lantiq_gswip_sl5501_get_port5_tx_stats(u32 *tx_good, u32 *tx_dropped)
++{
++	struct gswip_priv *priv = READ_ONCE(sl5501_gswip_priv);
++
++	if (!priv)
++		return -ENODEV;
++
++	/* Offsets are the same counters exported through ethtool -S. */
++	if (tx_good)
++		*tx_good = gswip_bcm_ram_entry_read(priv, 5, 0x0c);
++	if (tx_dropped)
++		*tx_dropped = gswip_bcm_ram_entry_read(priv, 5, 0x10);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(lantiq_gswip_sl5501_get_port5_tx_stats);
++
+ static void gswip_get_ethtool_stats(struct dsa_switch *ds, int port,
+ 				    uint64_t *data)
+ {
