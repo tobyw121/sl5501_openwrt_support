@@ -1,0 +1,323 @@
+/dts-v1/;
+
+#include "vr9.dtsi"
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/leds/common.h>
+#include <dt-bindings/mips/lantiq_rcu_gphy.h>
+
+/ {
+	compatible = "sphairon,sl5501", "lantiq,xway", "lantiq,vr9";
+	model = "Sphairon/Zyxel Speedlink 5501";
+
+	chosen {
+		bootargs = "console=ttyLTQ0,115200";
+	};
+
+	aliases {
+		led-boot = &power_green;
+		led-failsafe = &power_red;
+		led-running = &power_green;
+		led-upgrade = &power_green;
+		led-internet = &internet_green;
+		led-wifi = &wlan_green;
+	};
+
+	memory@0 {
+		device_type = "memory";
+		reg = <0x0 0x08000000>; /* 128 MiB */
+	};
+
+	/*
+	 * The on-board Ralink WLAN is an iNIC, not a PCI/PCIe WLAN adapter.
+	 * The VR9 host exchanges RACFG frames with it through GSWIP port 5.
+	 */
+	rt3662_inic: wifi-inic {
+		compatible = "sphairon,sl5501-rt3662-inic", "ralink,rt3662-inic-mii";
+		power-gpios = <&gpio 37 GPIO_ACTIVE_HIGH>;
+		reset-gpios = <&gpio 15 GPIO_ACTIVE_LOW>;
+		ralink,mii-master = "wifi";
+	};
+
+	keys {
+		compatible = "gpio-keys-polled";
+		poll-interval = <100>;
+
+		wlan {
+			label = "wlan";
+			gpios = <&gpio 45 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_RFKILL>;
+		};
+
+		wps {
+			label = "wps";
+			gpios = <&gpio 46 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_WPS_BUTTON>;
+		};
+
+		reset {
+			label = "reset";
+			gpios = <&gpio 47 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_RESTART>;
+		};
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		power_green: power-green {
+			function = LED_FUNCTION_POWER;
+			color = <LED_COLOR_ID_GREEN>;
+			gpios = <&gpio 3 GPIO_ACTIVE_LOW>;
+			default-state = "keep";
+		};
+
+		power_red: power-red {
+			function = LED_FUNCTION_POWER;
+			color = <LED_COLOR_ID_RED>;
+			gpios = <&gpio 19 GPIO_ACTIVE_LOW>;
+		};
+
+		fxo-green {
+			label = "green:fxo";
+			gpios = <&gpio 14 GPIO_ACTIVE_LOW>;
+		};
+
+		info-green {
+			label = "green:info";
+			gpios = <&gpio 20 GPIO_ACTIVE_LOW>;
+		};
+
+		info-red {
+			label = "red:info";
+			gpios = <&gpio 21 GPIO_ACTIVE_LOW>;
+		};
+
+		internet_green: internet-green {
+			label = "green:internet";
+			gpios = <&gpio 27 GPIO_ACTIVE_LOW>;
+		};
+
+		internet-red {
+			label = "red:internet";
+			gpios = <&gpio 28 GPIO_ACTIVE_LOW>;
+		};
+
+		wlan_green: wlan-green {
+			function = LED_FUNCTION_WLAN;
+			color = <LED_COLOR_ID_GREEN>;
+			gpios = <&gpio 29 GPIO_ACTIVE_LOW>;
+		};
+
+		wps-green {
+			function = LED_FUNCTION_WPS;
+			color = <LED_COLOR_ID_GREEN>;
+			gpios = <&gpio 30 GPIO_ACTIVE_LOW>;
+		};
+
+		usb2-green {
+			label = "green:usb2";
+			gpios = <&gpio 32 GPIO_ACTIVE_LOW>;
+			trigger-sources = <&ehci_port2>;
+			linux,default-trigger = "usbport";
+		};
+	};
+
+	usb0_vbus: regulator-usb0-vbus {
+		compatible = "regulator-fixed";
+		regulator-name = "USB0_VBUS";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		gpios = <&gpio 41 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+	};
+
+	usb1_vbus: regulator-usb1-vbus {
+		compatible = "regulator-fixed";
+		regulator-name = "USB1_VBUS";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		gpios = <&gpio 33 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+	};
+};
+
+/* OEM/U-Boot: GPHY0 uses 22F (10/100), GPHY1 uses 11G (Gigabit). */
+&gphy0 {
+	lantiq,gphy-mode = <GPHY_MODE_FE>;
+};
+
+&gphy1 {
+	lantiq,gphy-mode = <GPHY_MODE_GE>;
+};
+
+&gswip {
+	pinctrl-0 = <&mdio_pins>;
+	pinctrl-names = "default";
+};
+
+&gswip_mdio {
+	/* External Lantiq PEF7071 PHYs. */
+	phy0: ethernet-phy@0 {
+		reg = <0x0>;
+	};
+
+	phy1: ethernet-phy@1 {
+		reg = <0x1>;
+	};
+
+	/* Internal VR9 GPHY addresses used by the OEM board code. */
+	phy11: ethernet-phy@11 {
+		reg = <0x11>;
+	};
+
+	phy12: ethernet-phy@12 {
+		reg = <0x12>;
+	};
+
+	phy13: ethernet-phy@13 {
+		reg = <0x13>;
+	};
+};
+
+&gswip_ports {
+	/*
+	 * OEM mapping:
+	 *   GMAC0 = WANoE (external PEF7071)
+	 *   GMAC1 = LAN4  (external PEF7071)
+	 *   GMAC2 = LAN1  (internal PHY 0x11)
+	 *   GMAC3 = LAN2  (internal PHY 0x12)
+	 *   GMAC4 = LAN3  (internal PHY 0x13)
+	 *   GMAC5 = Ralink RT3662/RT5392 iNIC
+	 */
+	port@0 {
+		reg = <0>;
+		label = "wan";
+		/* PEF7071 is strapped for 1.5 ns TX/RX delay. */
+		phy-mode = "rgmii-id";
+		phy-handle = <&phy0>;
+	};
+
+	port@1 {
+		reg = <1>;
+		label = "lan4";
+		/* Same externally delayed PEF7071 interface as GMAC0. */
+		phy-mode = "rgmii-id";
+		phy-handle = <&phy1>;
+	};
+
+	port@2 {
+		reg = <2>;
+		label = "lan1";
+		phy-mode = "internal";
+		phy-handle = <&phy11>;
+	};
+
+	port@3 {
+		reg = <3>;
+		label = "lan2";
+		phy-mode = "internal";
+		phy-handle = <&phy12>;
+	};
+
+	port@4 {
+		reg = <4>;
+		label = "lan3";
+		phy-mode = "internal";
+		phy-handle = <&phy13>;
+	};
+
+	/* No MDIO PHY: this is the fixed host link to the Ralink iNIC. */
+	port@5 {
+		reg = <5>;
+		label = "wifi";
+		phy-mode = "rgmii";
+
+		fixed-link {
+			speed = <1000>;
+			full-duplex;
+		};
+	};
+};
+
+&spi {
+	status = "okay";
+
+	flash@4 {
+		compatible = "jedec,spi-nor";
+		reg = <4>;
+		spi-max-frequency = <25000000>;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			/* NTLB layout from U_boot_2013_sl5501_ntlb_V2. */
+			partition@0 {
+				label = "uboot_fix";
+				reg = <0x00000000 0x00080000>;
+				read-only;
+			};
+
+			partition@80000 {
+				label = "uboot_cfg";
+				reg = <0x00080000 0x00040000>;
+				/* writable: U-Boot saveenv/fw_setenv persist ethaddr here */
+			};
+
+			partition@c0000 {
+				label = "firmware";
+				reg = <0x000c0000 0x00f80000>; /* 15.5 MiB */
+			};
+
+			partition@1040000 {
+				label = "data";
+				reg = <0x01040000 0x02fc0000>; /* remaining 47.75 MiB */
+			};
+		};
+	};
+};
+
+/* The WLAN is connected through GSWIP GMAC5, not PCI or PCIe. */
+&pci0 {
+	status = "disabled";
+};
+
+&pcie0 {
+	status = "disabled";
+};
+
+/* Keep the VR9 serial LED/GPHY shift-register block available. */
+&stp {
+	status = "okay";
+	lantiq,shadow = <0xffff>;
+	lantiq,dsl = <0x3>;
+	lantiq,phy1 = <0x7>;
+	lantiq,phy2 = <0x7>;
+};
+
+&usb_phy0 {
+	status = "okay";
+};
+
+&usb_phy1 {
+	status = "okay";
+};
+
+&usb0 {
+	status = "okay";
+	vbus-supply = <&usb0_vbus>;
+};
+
+&usb1 {
+	status = "okay";
+	vbus-supply = <&usb1_vbus>;
+};
+
+/* SLIC reset is GPIO31 on the OEM kernel. */
+&vmmc {
+	status = "okay";
+	gpios = <&gpio 31 GPIO_ACTIVE_HIGH>;
+};
