@@ -1,0 +1,384 @@
+From: OpenAI <noreply@openai.com>
+Date: Tue, 25 Aug 2026 01:20:00 +0200
+Subject: [PATCH] MIPS: lantiq: add Sphairon Speedlink 5501 SPI-SPL support
+
+Add a dedicated VR9 board target for the Sphairon/Zyxel Speedlink 5501.
+The hardware data is derived from the GPL Sphairon 2013.04 SL550x tree while
+using the OpenWrt Lantiq U-Boot infrastructure.
+
+Use the fixed NTLB layout expected by the OpenWrt port:
+  512 KiB uboot_fix + 256 KiB uboot_cfg + 15.5 MiB firmware + data.
+
+The RT3662 iNIC is left powered down/reset in U-Boot and is initialized by
+Linux. The default command loads the OpenWrt firmware partition from SPI and
+boots its legacy uImage.
+
+diff --git a/board/sphairon/sl5501/Makefile b/board/sphairon/sl5501/Makefile
+new file mode 100644
+index 0000000..422c679
+--- /dev/null
++++ b/board/sphairon/sl5501/Makefile
+@@ -0,0 +1,25 @@
++#
++# SPDX-License-Identifier: GPL-2.0+
++#
++
++include $(TOPDIR)/config.mk
++
++LIB	= $(obj)lib$(BOARD).o
++
++COBJS	= $(BOARD).o
++
++SRCS	:= $(SOBJS:.o=.S) $(COBJS:.o=.c)
++OBJS	:= $(addprefix $(obj),$(COBJS))
++SOBJS	:= $(addprefix $(obj),$(SOBJS))
++
++$(LIB): $(obj).depend $(OBJS) $(SOBJS)
++	$(call cmd_link_o_target, $(OBJS) $(SOBJS))
++
++#########################################################################
++
++include $(SRCTREE)/rules.mk
++
++sinclude $(obj).depend
++
++#########################################################################
++
+diff --git a/board/sphairon/sl5501/config.mk b/board/sphairon/sl5501/config.mk
+new file mode 100644
+index 0000000..dd7854a
+--- /dev/null
++++ b/board/sphairon/sl5501/config.mk
+@@ -0,0 +1,6 @@
++#
++# SPDX-License-Identifier: GPL-2.0+
++#
++
++PLATFORM_CPPFLAGS += -I$(TOPDIR)/board/$(BOARDDIR)
++
+diff --git a/board/sphairon/sl5501/ddr_settings.h b/board/sphairon/sl5501/ddr_settings.h
+new file mode 100644
+index 0000000..1460e82
+--- /dev/null
++++ b/board/sphairon/sl5501/ddr_settings.h
+@@ -0,0 +1,68 @@
++/*
++ * DDR settings from the Sphairon SL550x vendor U-Boot tree.
++ * SPDX-License-Identifier: GPL-2.0+
++ */
++
++#define MC_CCR00_VALUE 0x101
++#define MC_CCR01_VALUE 0x1000101
++#define MC_CCR02_VALUE 0x1010000
++#define MC_CCR03_VALUE 0x101
++#define MC_CCR04_VALUE 0x1000000
++#define MC_CCR05_VALUE 0x1000101
++#define MC_CCR06_VALUE 0x1000100
++#define MC_CCR07_VALUE 0x1010000
++#define MC_CCR08_VALUE 0x1000101
++#define MC_CCR09_VALUE 0x0
++#define MC_CCR10_VALUE 0x2000100
++#define MC_CCR11_VALUE 0x2000301
++#define MC_CCR12_VALUE 0x30000
++#define MC_CCR13_VALUE 0x202
++#define MC_CCR14_VALUE 0x7080A0F
++#define MC_CCR15_VALUE 0x2040F
++#define MC_CCR16_VALUE 0x40000
++#define MC_CCR17_VALUE 0x70102
++#define MC_CCR18_VALUE 0x4020002
++#define MC_CCR19_VALUE 0x30302
++#define MC_CCR20_VALUE 0x8000700
++#define MC_CCR21_VALUE 0x40F020A
++#define MC_CCR22_VALUE 0x0
++#define MC_CCR23_VALUE 0xC020000
++#define MC_CCR24_VALUE 0x4401B04
++#define MC_CCR25_VALUE 0x0
++#define MC_CCR26_VALUE 0x0
++#define MC_CCR27_VALUE 0x6420000
++#define MC_CCR28_VALUE 0x0
++#define MC_CCR29_VALUE 0x0
++#define MC_CCR30_VALUE 0x798
++#define MC_CCR31_VALUE 0x0
++#define MC_CCR32_VALUE 0x0
++#define MC_CCR33_VALUE 0x650000
++#define MC_CCR34_VALUE 0x200C8
++#define MC_CCR35_VALUE 0x1D445D
++#define MC_CCR36_VALUE 0xC8
++#define MC_CCR37_VALUE 0xC351
++#define MC_CCR38_VALUE 0x0
++#define MC_CCR39_VALUE 0x141F20
++#define MC_CCR40_VALUE 0x141F20
++#define MC_CCR41_VALUE 0x141F20
++#define MC_CCR42_VALUE 0x141F20
++#define MC_CCR43_VALUE 0x566501
++#define MC_CCR44_VALUE 0x566501
++#define MC_CCR45_VALUE 0x566501
++#define MC_CCR46_VALUE 0x566501
++#define MC_CCR47_VALUE 0x0
++#define MC_CCR48_VALUE 0x0
++#define MC_CCR49_VALUE 0x0
++#define MC_CCR50_VALUE 0x0
++#define MC_CCR51_VALUE 0x0
++#define MC_CCR52_VALUE 0x133
++#define MC_CCR53_VALUE 0xF3004B27
++#define MC_CCR54_VALUE 0xF3004B27
++#define MC_CCR55_VALUE 0xF3004B27
++#define MC_CCR56_VALUE 0xF3004B27
++#define MC_CCR57_VALUE 0x7800301
++#define MC_CCR58_VALUE 0x7800301
++#define MC_CCR59_VALUE 0x7800301
++#define MC_CCR60_VALUE 0x7800301
++#define MC_CCR61_VALUE 0x4
++
+diff --git a/board/sphairon/sl5501/sl5501.c b/board/sphairon/sl5501/sl5501.c
+new file mode 100644
+index 0000000..e86a8f8
+--- /dev/null
++++ b/board/sphairon/sl5501/sl5501.c
+@@ -0,0 +1,133 @@
++/*
++ * Sphairon/Zyxel Speedlink 5501 board support.
++ * Based on the GPLv2+ Sphairon SL550x board code.
++ * SPDX-License-Identifier: GPL-2.0+
++ */
++
++#include <common.h>
++#include <spi.h>
++#include <asm/gpio.h>
++#include <asm/lantiq/eth.h>
++#include <asm/lantiq/chipid.h>
++#include <asm/lantiq/cpu.h>
++#include <asm/arch/gphy.h>
++
++#if defined(CONFIG_SPL_BUILD)
++#define do_gpio_init 1
++#define do_pll_init  1
++#define do_dcdc_init 0
++#elif defined(CONFIG_SYS_BOOT_RAM)
++#define do_gpio_init 1
++#define do_pll_init  0
++#define do_dcdc_init 1
++#else
++#define do_gpio_init 0
++#define do_pll_init  0
++#define do_dcdc_init 1
++#endif
++
++static void gpio_init(void)
++{
++	/* Buttons, all low-active. */
++	gpio_direction_input(45); /* WLAN */
++	gpio_direction_input(46); /* WPS */
++	gpio_direction_input(47); /* reset */
++
++	/* Front LEDs. */
++	gpio_direction_output(3, 1);  /* power green, low-active */
++	gpio_direction_output(19, 1); /* power red */
++	gpio_direction_output(20, 1); /* info green */
++	gpio_direction_output(21, 1); /* info red */
++	gpio_direction_output(27, 1); /* internet green */
++	gpio_direction_output(28, 1); /* internet red */
++	gpio_direction_output(29, 1); /* WLAN green */
++	gpio_direction_output(30, 1); /* WPS green */
++	gpio_direction_output(32, 1); /* USB2 green */
++
++	/* SPI CS 0.4 for the S25FL512S. */
++	gpio_direction_output(10, 1);
++
++	/* USB power remains off while U-Boot runs. */
++	gpio_direction_output(41, 0);
++	gpio_direction_output(33, 0);
++
++	/* RT3662/RT5392 iNIC: reset asserted, power disabled. */
++	gpio_direction_output(15, 0);
++	gpio_direction_output(37, 0);
++}
++
++int board_early_init_f(void)
++{
++	if (do_gpio_init)
++		gpio_init();
++
++	if (do_pll_init)
++		ltq_pll_init();
++
++	if (do_dcdc_init)
++		ltq_dcdc_init(0x7f);
++
++	return 0;
++}
++
++int checkboard(void)
++{
++	puts("Board: " CONFIG_BOARD_NAME "\n");
++	ltq_chip_print_info();
++	return 0;
++}
++
++static const struct ltq_eth_port_config eth_port_config[] = {
++	/* GMAC0: external PEF7071, WANoE. */
++	{ 0, 0x00, LTQ_ETH_PORT_PHY,  PHY_INTERFACE_MODE_RGMII },
++	/* GMAC1: external PEF7071, LAN4. */
++	{ 1, 0x01, LTQ_ETH_PORT_PHY,  PHY_INTERFACE_MODE_RGMII },
++	/* GMAC2: internal FE GPHY, LAN1. */
++	{ 2, 0x11, LTQ_ETH_PORT_PHY,  PHY_INTERFACE_MODE_MII },
++	/* GMAC3: internal FE GPHY, LAN2. */
++	{ 3, 0x12, LTQ_ETH_PORT_PHY,  PHY_INTERFACE_MODE_MII },
++	/* GMAC4: internal GE GPHY, LAN3. */
++	{ 4, 0x13, LTQ_ETH_PORT_PHY,  PHY_INTERFACE_MODE_GMII },
++	/* GMAC5 is the Ralink iNIC datapath; Linux owns it. */
++	{ 5, 0x00, LTQ_ETH_PORT_NONE, PHY_INTERFACE_MODE_NONE },
++};
++
++static const struct ltq_eth_board_config eth_board_config = {
++	.ports = eth_port_config,
++	.num_ports = ARRAY_SIZE(eth_port_config),
++};
++
++int board_eth_init(bd_t *bis)
++{
++	const enum ltq_gphy_clk clk = LTQ_GPHY_CLK_25MHZ_PLL0;
++	const ulong fw_ge_addr = 0x80fe0000;
++	const ulong fw_fe_addr = 0x80ff0000;
++
++	/* Exact SL5501 vendor arrangement: GPHY0 FE, GPHY1 GE. */
++	ltq_gphy_phy11g_a2x_load(fw_ge_addr);
++	ltq_gphy_phy22f_a2x_load(fw_fe_addr);
++
++	ltq_cgu_gphy_clk_src(clk);
++	ltq_rcu_gphy_boot(0, fw_fe_addr);
++	ltq_rcu_gphy_boot(1, fw_ge_addr);
++
++	return ltq_eth_initialize(&eth_board_config);
++}
++
++int spi_cs_is_valid(unsigned int bus, unsigned int cs)
++{
++	return bus == 0 && cs == 4;
++}
++
++void spi_cs_activate(struct spi_slave *slave)
++{
++	if (slave->bus == 0 && slave->cs == 4)
++		gpio_set_value(10, 0);
++}
++
++void spi_cs_deactivate(struct spi_slave *slave)
++{
++	if (slave->bus == 0 && slave->cs == 4)
++		gpio_set_value(10, 1);
++}
++
+diff --git a/boards.cfg b/boards.cfg
+index 49d288a..1227516 100644
+--- a/boards.cfg
++++ b/boards.cfg
+@@ -551,5 +551,7 @@
+ Active  mips        mips32         vrx200      lantiq          easy80920           easy80920_nandspl                    easy80920:SYS_BOOT_NANDSPL                                                                                                        Daniel Schwierzeck <daniel.schwierzeck@gmail.com>
+ Active  mips        mips32         vrx200      lantiq          easy80920           easy80920_nor                        easy80920:SYS_BOOT_NOR                                                                                                            Daniel Schwierzeck <daniel.schwierzeck@gmail.com>
+ Active  mips        mips32         vrx200      lantiq          easy80920           easy80920_norspl                     easy80920:SYS_BOOT_NORSPL                                                                                                         Daniel Schwierzeck <daniel.schwierzeck@gmail.com>
++Active  mips        mips32         vrx200      sphairon        sl5501              sl5501_ram                           sl5501:SYS_BOOT_RAM                                                                                                               -
++Active  mips        mips32         vrx200      sphairon        sl5501              sl5501_sfspl                         sl5501:SYS_BOOT_SFSPL                                                                                                             -
+ Active  mips        mips32         vrx200      lantiq          easy80920           easy80920_ram                        easy80920:SYS_BOOT_RAM                                                                                                            Daniel Schwierzeck <daniel.schwierzeck@gmail.com>
+ Active  mips        mips32         vrx200      lantiq          easy80920           easy80920_sfspl                      easy80920:SYS_BOOT_SFSPL                                                                                                          Daniel Schwierzeck <daniel.schwierzeck@gmail.com>
+diff --git a/include/configs/sl5501.h b/include/configs/sl5501.h
+new file mode 100644
+index 0000000..bcf5edc
+--- /dev/null
++++ b/include/configs/sl5501.h
+@@ -0,0 +1,95 @@
++/*
++ * Sphairon/Zyxel Speedlink 5501 configuration.
++ * Based on the GPLv2+ Sphairon SL550x configuration.
++ * SPDX-License-Identifier: GPL-2.0+
++ */
++
++#ifndef __CONFIG_SL5501_H
++#define __CONFIG_SL5501_H
++
++#define CONFIG_MACH_TYPE        "SPHSL550X"
++#define CONFIG_IDENT_STRING     " " CONFIG_MACH_TYPE
++#define CONFIG_BOARD_NAME       "Sphairon/Zyxel Speedlink 5501"
++
++#define CONFIG_LTQ_SUPPORT_UART
++#define CONFIG_LTQ_SUPPORT_ETHERNET
++
++#define CONFIG_LTQ_SSIO_SHIFT_REGS 1
++#define CONFIG_LTQ_SSIO_EDGE_FALLING
++#define CONFIG_LTQ_SSIO_GPHY1_MODE 0x3
++#define CONFIG_LTQ_SSIO_GPHY2_MODE 0x3
++#define CONFIG_LTQ_SSIO_INIT_VALUE 0x0
++
++#define CONFIG_LTQ_SUPPORT_SPI_FLASH
++#define CONFIG_SPI_FLASH_SPANSION
++
++#define CONFIG_LTQ_SUPPORT_SPL_SPI_FLASH
++#define CONFIG_SPL_SPI_BUS      0
++#define CONFIG_SPL_SPI_CS       4
++#define CONFIG_SPL_SPI_MAX_HZ   25000000
++#define CONFIG_SPL_SPI_MODE     0
++#define CONFIG_LTQ_SPL_COMP_LZO
++#define CONFIG_LTQ_SPL_CONSOLE
++
++/* Keep the vendor DDR controller geometry untouched in SPL. */
++/* CONFIG_SYS_DRAM_PROBE intentionally disabled for SL5501. */
++
++/* Allow a generously sized OpenWrt kernel to be decompressed. */
++#define CONFIG_SYS_BOOTM_LEN    0x01000000
++
++/* Authoritative NTLB layout for this port. Linux also has it in the DTS. */
++#define MTDIDS_DEFAULT "nor0=spi0.4"
++#define MTDPARTS_DEFAULT \
++	"mtdparts=spi0.4:512k(uboot_fix),256k(uboot_cfg)," \
++	"15872k(firmware),-(data)"
++
++/* Environment is the complete 256 KiB uboot_cfg erase sector. */
++#define CONFIG_ENV_SPI_BUS      CONFIG_SPL_SPI_BUS
++#define CONFIG_ENV_SPI_CS       CONFIG_SPL_SPI_CS
++#define CONFIG_ENV_SPI_MAX_HZ   CONFIG_SPL_SPI_MAX_HZ
++#define CONFIG_ENV_SPI_MODE     CONFIG_SPL_SPI_MODE
++
++#if defined(CONFIG_SYS_BOOT_SFSPL)
++#define CONFIG_ENV_IS_IN_SPI_FLASH
++#define CONFIG_ENV_OVERWRITE
++#define CONFIG_ENV_OFFSET       0x00080000
++#define CONFIG_ENV_SECT_SIZE    0x00040000
++#else
++#define CONFIG_ENV_IS_NOWHERE
++#endif
++#define CONFIG_ENV_SIZE         0x00002000
++
++#define CONFIG_LOADADDR         CONFIG_SYS_LOAD_ADDR
++
++#define CONFIG_LTQ_ADVANCED_CONSOLE
++#define CONFIG_BAUDRATE         115200
++#define CONFIG_CONSOLE_ASC      1
++#define CONFIG_CONSOLE_DEV      "ttyLTQ1"
++
++#include <asm/lantiq/config.h>
++#include <asm/arch/config.h>
++#include "openwrt-lantiq-common.h"
++
++/* Device-specific fallback. The valid uboot_cfg image uses the same value. */
++#undef CONFIG_ETHADDR
++#define CONFIG_ETHADDR          1C:74:0D:BA:28:10
++
++/*
++ * The SPI NOR is not memory mapped. Read the complete 15.5 MiB firmware
++ * partition to a high RAM address for bootm. 0x82000000 avoids overlap with
++ * the kernel decompression destination near 0x80000000.
++ */
++#undef CONFIG_BOOTCOMMAND
++#define CONFIG_BOOTCOMMAND "run boot_openwrt"
++
++#define CONFIG_EXTRA_ENV_SETTINGS \
++	CONFIG_ENV_LANTIQ_DEFAULTS \
++	"openwrt_addr=0x82000000\0" \
++	"boot_openwrt=setenv bootargs console=ttyLTQ0,115200 ethaddr=${ethaddr}; " \
++		"sf probe 0:4 25000000 0; " \
++		"sf read ${openwrt_addr} 0x000c0000 0x00f80000; " \
++		"bootm ${openwrt_addr}\0" \
++	"mtdids=" MTDIDS_DEFAULT "\0" \
++	"mtdparts=" MTDPARTS_DEFAULT "\0"
++
++#endif /* __CONFIG_SL5501_H */

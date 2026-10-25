@@ -1,0 +1,76 @@
+--- a/arch/mips/cpu/mips32/vrx200/mem_init.S
++++ b/arch/mips/cpu/mips32/vrx200/mem_init.S
+@@ -17,6 +17,8 @@
+ #define LTQ_MC_DDR_START		(1 << 8)
+ #define LTQ_MC_DDR_DLL_LOCK_IND	1
+ 
++#define DDR_ECHO_DLL0			0x0420
++#define DDR_ECHO_DLL1			0x0428
+ #define CCS_ALWAYS_LAST			0x0430
+ #define CCS_AHBM_CR_BURST_EN		(1 << 2)
+ #define CCS_FPIM_CR_BURST_EN		(1 << 1)
+@@ -101,8 +103,18 @@
+ 	ccr_sw	60, MC_CCR60_VALUE
+ 	ccr_sw	61, MC_CCR61_VALUE
+ 
+-	/* Disable bursts between FPI Master bus and XBAR bus */
++	/* Load memory-controller global register base. */
+ 	li	t4, (LTQ_MC_GLOBAL_BASE | KSEG1)
++
++	/* Vendor VRX200 code starts with a safe echo-DLL delay, then applies
++	 * the trained value after the first DLL lock. */
++#ifdef MC_DDR_ECHO_DLL_INIT_VALUE
++	li	t5, MC_DDR_ECHO_DLL_INIT_VALUE
++	sw	t5, DDR_ECHO_DLL0(t4)
++	sw	t5, DDR_ECHO_DLL1(t4)
++#endif
++
++	/* Disable bursts between FPI Master bus and XBAR bus */
+ 	li	t5, CCS_AHBM_CR_BURST_EN
+ 	sw	t5, CCS_ALWAYS_LAST(t4)
+ 
+@@ -228,6 +240,44 @@
+ mc_finished:
+ #endif /* CONFIG_SYS_DRAM_PROBE */
+ 
++#if defined(MC_DDR_ECHO_DLL0_TUNED_VALUE) && \
++    defined(MC_DDR_ECHO_DLL1_TUNED_VALUE) && \
++    defined(MC_CCR39_TUNED_VALUE) && defined(MC_CCR40_TUNED_VALUE) && \
++    defined(MC_CCR43_TUNED_VALUE) && defined(MC_CCR44_TUNED_VALUE)
++	/*
++	 * Apply the board's previously trained PHY delays exactly like the
++	 * Sphairon SPL: halt the controller, update echo/read/write delays,
++	 * restart it and wait for both DLL slices to lock again.
++	 */
++	sw	zero, LTQ_MC_DDR_CCR_OFFSET(7)(t0)
++
++	li	t4, (LTQ_MC_GLOBAL_BASE | KSEG1)
++	li	t5, MC_DDR_ECHO_DLL0_TUNED_VALUE
++	sw	t5, DDR_ECHO_DLL0(t4)
++	li	t5, MC_DDR_ECHO_DLL1_TUNED_VALUE
++	sw	t5, DDR_ECHO_DLL1(t4)
++
++	ccr_sw	39, MC_CCR39_TUNED_VALUE
++	ccr_sw	40, MC_CCR40_TUNED_VALUE
++	ccr_sw	43, MC_CCR43_TUNED_VALUE
++	ccr_sw	44, MC_CCR44_TUNED_VALUE
++
++	lw	t1, LTQ_MC_DDR_CCR_OFFSET(7)(t0)
++	li	t2, LTQ_MC_DDR_START
++	or	t1, t1, t2
++	sw	t1, LTQ_MC_DDR_CCR_OFFSET(7)(t0)
++
++1:
++	li	t1, LTQ_MC_DDR_DLL_LOCK_IND
++	lw	t2, LTQ_MC_DDR_CCR_OFFSET(47)(t0)
++	and	t2, t2, t1
++	bne	t1, t2, 1b
++
++	lw	t2, LTQ_MC_DDR_CCR_OFFSET(48)(t0)
++	and	t2, t2, t1
++	bne	t1, t2, 1b
++#endif
++
+ 	jr	ra
+ 
+ 	END(ltq_mem_init)

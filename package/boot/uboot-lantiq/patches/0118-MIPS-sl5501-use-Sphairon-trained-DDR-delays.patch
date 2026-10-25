@@ -1,0 +1,19 @@
+--- a/board/sphairon/sl5501/ddr_settings.h
++++ b/board/sphairon/sl5501/ddr_settings.h
+@@ -66,3 +66,16 @@
+ #define MC_CCR60_VALUE 0x7800301
+ #define MC_CCR61_VALUE 0x4
+ 
++/*
++ * DDR PHY calibration recovered from this SL5501's original Sphairon SPL.
++ * Stored vendor record: 5d5b9b4e 00282864 641f1fff
++ * CRC32 over state/delays/padding: 0x5d5b9b4e.
++ */
++#define MC_DDR_ECHO_DLL_INIT_VALUE 0x24
++#define MC_DDR_ECHO_DLL0_TUNED_VALUE 0x28
++#define MC_DDR_ECHO_DLL1_TUNED_VALUE 0x28
++#define MC_CCR39_TUNED_VALUE 0x141F20
++#define MC_CCR40_TUNED_VALUE 0x141F20
++#define MC_CCR43_TUNED_VALUE 0x566401
++#define MC_CCR44_TUNED_VALUE 0x566401
++
