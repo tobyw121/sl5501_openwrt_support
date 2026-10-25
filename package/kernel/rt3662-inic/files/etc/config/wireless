@@ -1,0 +1,40 @@
+# SL5501 RT3662/RT5392 default dual-band AP configuration.
+# radio0/phy0 = RT3662 5 GHz, radio1/phy1 = RT5392 2.4 GHz.
+# The real WLAN payload dataplane is DSA port "wifi" in br-lan.  The phy*-ap0
+# devices are cfg80211/EAPOL control facades and must not be enslaved to br-lan.
+
+config wifi-device 'radio0'
+	option type 'mac80211'
+	option phy 'phy0'
+	option band '5g'
+	option channel '40'
+	option htmode 'HT20'
+	option country 'DE'
+	option disabled '0'
+
+config wifi-iface 'default_radio0'
+	option device 'radio0'
+	option mode 'ap'
+	option ssid 'openwrt_5GHz'
+	option encryption 'psk2'
+	option key '12345678!'
+	option disassoc_low_ack '0'
+	option max_inactivity '86400'
+
+config wifi-device 'radio1'
+	option type 'mac80211'
+	option phy 'phy1'
+	option band '2g'
+	option channel '1'
+	option htmode 'HT20'
+	option country 'DE'
+	option disabled '0'
+
+config wifi-iface 'default_radio1'
+	option device 'radio1'
+	option mode 'ap'
+	option ssid 'openwrt_2,4GHz'
+	option encryption 'psk2'
+	option key '12345678!'
+	option disassoc_low_ack '0'
+	option max_inactivity '86400'

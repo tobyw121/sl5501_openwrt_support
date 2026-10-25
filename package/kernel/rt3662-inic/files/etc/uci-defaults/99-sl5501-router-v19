@@ -1,0 +1,62 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+# SL5501 v19 router topology migration.
+# Keep LAN/WLAN usable with no uplink; use physical DSA "wan" as a separate
+# DHCP/DHCPv6 uplink when a cable is present. Firewall4's stock lan->wan
+# forwarding + masquerading then provides normal router/NAT separation.
+
+. /lib/functions/system.sh
+
+[ "$(board_name)" = "sphairon,sl5501" ] || exit 0
+
+# Canonical LAN bridge. The iNIC payload dataplane is GSWIP port "wifi";
+# synthetic cfg80211 AP netdevs are control/EAPOL facades and are not bridge
+# payload ports.
+uci -q set network.lan_dev='device'
+uci -q set network.lan_dev.name='br-lan'
+uci -q set network.lan_dev.type='bridge'
+uci -q delete network.lan_dev.ports
+for p in lan1 lan2 lan3 lan4 wifi; do
+	uci -q add_list network.lan_dev.ports="$p"
+done
+uci -q set network.lan='interface'
+uci -q set network.lan.device='br-lan'
+uci -q set network.lan.proto='static'
+uci -q set network.lan.ipaddr='192.168.1.1'
+uci -q set network.lan.netmask='255.255.255.0'
+uci -q set network.lan.ip6assign='60'
+
+# Repair the v18-generated device section that pointed at dsl0. Preserve an
+# already generated WAN MAC address while changing only its physical device.
+uci -q set network.wan_dev='device'
+uci -q set network.wan_dev.name='wan'
+uci -q set network.wan='interface'
+uci -q set network.wan.device='wan'
+uci -q set network.wan.proto='dhcp'
+uci -q set network.wan.metric='10'
+uci -q delete network.wan.username
+uci -q delete network.wan.password
+
+# Native IPv6 uplink follows the same physical Ethernet WAN.
+uci -q set network.wan6='interface'
+uci -q set network.wan6.device='wan'
+uci -q set network.wan6.proto='dhcpv6'
+
+uci -q commit network
+
+# DHCP must be independent of WAN state. A disconnected/failed WAN therefore
+# never prevents Wi-Fi/LAN clients from receiving 192.168.1.x addresses.
+if [ -f /etc/config/dhcp ]; then
+	uci -q set dhcp.lan='dhcp'
+	uci -q set dhcp.lan.interface='lan'
+	uci -q set dhcp.lan.start='100'
+	uci -q set dhcp.lan.limit='150'
+	uci -q set dhcp.lan.leasetime='12h'
+	uci -q delete dhcp.lan.ignore
+	uci -q set dhcp.wan='dhcp'
+	uci -q set dhcp.wan.interface='wan'
+	uci -q set dhcp.wan.ignore='1'
+	uci -q commit dhcp
+fi
+
+exit 0

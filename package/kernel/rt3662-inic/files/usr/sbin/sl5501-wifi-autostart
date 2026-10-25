@@ -1,0 +1,274 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+# SL5501 RT3662/RT5392 dual-band AP bring-up.
+#
+# v16 rules:
+#   * never race OpenWrt's /etc/init.d/boot config_generate pass
+#   * never use `/sbin/wifi up` here: OpenWrt 24.10 implements it as
+#       wireless down -> network reload -> wireless up
+#     and a second automatic invocation can therefore tear down AP netdevs
+#     while hostapd/cfg80211 are still completing their first setup
+#   * one automatic owner per boot; init is fallback only
+#   * only non-destructive `network.wireless up` is used after reload
+
+TAG=sl5501-wifi
+STATE=/tmp/sl5501-wifi-autostart
+LOG=/tmp/sl5501-wifi-autostart.log
+LOCK=/tmp/.sl5501-wifi-autostart.lock
+TRIGGER=${1:-manual}
+
+log() {
+	printf '%s\n' "$*" >> "$LOG"
+	logger -t "$TAG" "$*" 2>/dev/null || true
+	printf '<6>%s: %s\n' "$TAG" "$*" > /dev/kmsg 2>/dev/null || true
+}
+
+# Automatic fallback invocations must never restart a setup that was already
+# successfully requested by the earlier hotplug worker.
+case "$TRIGGER" in
+	hotplug|init)
+		old_state="$(cat "$STATE" 2>/dev/null)"
+		case "$old_state" in
+			requested|ready)
+				log "v16 autostart trigger=$TRIGGER skipped; state=$old_state"
+				exit 0
+				;;
+		esac
+		;;
+esac
+
+if ! mkdir "$LOCK" 2>/dev/null; then
+	exit 0
+fi
+trap 'rmdir "$LOCK" 2>/dev/null' EXIT INT TERM
+
+# Re-check after obtaining the lock: another trigger may have completed while
+# this process was waiting to run.
+case "$TRIGGER" in
+	hotplug|init)
+		old_state="$(cat "$STATE" 2>/dev/null)"
+		case "$old_state" in
+			requested|ready)
+				log "v16 autostart trigger=$TRIGGER skipped after lock; state=$old_state"
+				exit 0
+				;;
+		esac
+		;;
+esac
+
+[ -s "$LOG" ] || : > "$LOG"
+echo starting > "$STATE"
+log "v16 autostart trigger=$TRIGGER"
+
+for f in /bin/config_generate /lib/netifd/wireless/mac80211.sh; do
+	if [ ! -x "$f" ]; then
+		log "ERROR: required executable missing or non-executable: $f"
+		echo failed-userspace > "$STATE"
+		exit 1
+	fi
+done
+for c in ubus uci; do
+	if ! command -v "$c" >/dev/null 2>&1; then
+		log "ERROR: required command missing: $c"
+		echo failed-userspace > "$STATE"
+		exit 1
+	fi
+done
+
+# /etc/init.d/boot creates this marker before kmodloader.  The RT3662 module
+# loads from kmodloader, so its ieee80211 hotplug event happens while the stock
+# first-boot config_generate pass is still pending.  v14/v15 called
+# config_generate from that hotplug worker and raced the stock boot path,
+# producing duplicate bridge ports.  Wait for the owner of the marker instead.
+i=0
+while [ -e /tmp/.config_pending ] && [ "$i" -lt 90 ]; do
+	i=$((i + 1))
+	sleep 1
+done
+if [ -e /tmp/.config_pending ]; then
+	log "ERROR: OpenWrt base configuration still pending after 90 seconds"
+	echo failed-config-pending > "$STATE"
+	exit 1
+fi
+log "OpenWrt base configuration pass complete"
+
+# Normally /etc/init.d/boot has generated this already. Keep a late fallback
+# for recovery images, but only after .config_pending disappeared so it cannot
+# run concurrently with the stock generator.
+if [ ! -s /etc/config/network ] || ! uci -q get network.lan >/dev/null 2>&1; then
+	log "network UCI missing after base boot; running late /bin/config_generate fallback"
+	/bin/config_generate >> "$LOG" 2>&1
+	cg_rc=$?
+	log "late config_generate rc=$cg_rc"
+fi
+
+if [ ! -s /etc/config/network ] || ! uci -q get network.lan >/dev/null 2>&1; then
+	log "ERROR: network UCI missing/incomplete"
+	echo failed-network-config > "$STATE"
+	exit 1
+fi
+
+# Canonical SL5501 bridge membership. This also repairs duplicate list entries
+# left behind by the v14/v15 first-boot config_generate race.
+if uci -q get network.lan_dev >/dev/null 2>&1; then
+	uci -q delete network.lan_dev.ports
+	for port in lan1 lan2 lan3 lan4 wifi; do
+		uci -q add_list network.lan_dev.ports="$port"
+	done
+	uci -q commit network
+fi
+log "network UCI ready: lan=$(uci -q get network.lan.device) wan=$(uci -q get network.wan.device) proto=$(uci -q get network.wan.proto)"
+
+# Wait for netifd ubus objects. By this point the stock base boot owns no
+# config_generate lock and a reload is safe.
+i=0
+while [ "$i" -lt 60 ]; do
+	if ubus list network >/dev/null 2>&1 && ubus list network.wireless >/dev/null 2>&1; then
+		break
+	fi
+	i=$((i + 1))
+	sleep 1
+done
+if [ "$i" -ge 60 ]; then
+	log "ERROR: netifd ubus objects not ready within 60 seconds"
+	echo failed-netifd-ubus > "$STATE"
+	exit 1
+fi
+
+log "requesting single netifd network reload"
+ubus call network reload >> "$LOG" 2>&1
+reload_rc=$?
+log "network reload rc=$reload_rc"
+if [ "$reload_rc" -ne 0 ]; then
+	log "ERROR: netifd rejected /etc/config/network"
+	uci show network >> "$LOG" 2>&1 || true
+	echo failed-network-reload > "$STATE"
+	exit 1
+fi
+
+# Wait for both cfg80211 devices and the spontaneous concurrent GET_MAC which
+# marks the OEM firmware as usable by cfg80211 operations.
+i=0
+while [ "$i" -lt 60 ]; do
+	if [ -d /sys/class/ieee80211/phy0 ] && [ -d /sys/class/ieee80211/phy1 ] && \
+	   dmesg 2>/dev/null | grep -q 'RT3662 iNIC firmware running:'; then
+		break
+	fi
+	i=$((i + 1))
+	sleep 1
+done
+if [ "$i" -ge 60 ]; then
+	log "ERROR: iNIC firmware-ready state not reached within 60 seconds"
+	echo failed-firmware > "$STATE"
+	exit 1
+fi
+log "iNIC firmware ready; enforcing enabled dual-band UCI state"
+
+uci -q get wireless.radio0 >/dev/null || uci set wireless.radio0=wifi-device
+uci -q get wireless.default_radio0 >/dev/null || uci set wireless.default_radio0=wifi-iface
+uci -q get wireless.radio1 >/dev/null || uci set wireless.radio1=wifi-device
+uci -q get wireless.default_radio1 >/dev/null || uci set wireless.default_radio1=wifi-iface
+uci -q set wireless.radio0.type='mac80211'
+uci -q set wireless.radio0.disabled='0'
+uci -q set wireless.radio0.phy='phy0'
+uci -q set wireless.radio0.band='5g'
+uci -q set wireless.radio0.channel='40'
+uci -q set wireless.radio0.htmode='HT20'
+uci -q set wireless.radio0.country='DE'
+uci -q set wireless.default_radio0.device='radio0'
+uci -q delete wireless.default_radio0.network
+uci -q set wireless.default_radio0.mode='ap'
+uci -q set wireless.default_radio0.ssid='openwrt_5GHz'
+uci -q set wireless.default_radio0.encryption='psk2'
+uci -q set wireless.default_radio0.key='12345678!'
+uci -q set wireless.default_radio0.disassoc_low_ack='0'
+uci -q set wireless.default_radio0.max_inactivity='86400'
+uci -q set wireless.radio1.type='mac80211'
+uci -q set wireless.radio1.disabled='0'
+uci -q set wireless.radio1.phy='phy1'
+uci -q set wireless.radio1.band='2g'
+uci -q set wireless.radio1.channel='1'
+uci -q set wireless.radio1.htmode='HT20'
+uci -q set wireless.radio1.country='DE'
+uci -q set wireless.default_radio1.device='radio1'
+uci -q delete wireless.default_radio1.network
+uci -q set wireless.default_radio1.mode='ap'
+uci -q set wireless.default_radio1.ssid='openwrt_2,4GHz'
+uci -q set wireless.default_radio1.encryption='psk2'
+uci -q set wireless.default_radio1.key='12345678!'
+uci -q set wireless.default_radio1.disassoc_low_ack='0'
+uci -q set wireless.default_radio1.max_inactivity='86400'
+uci -q commit wireless
+
+# One reload makes netifd consume the committed wireless UCI. Do NOT call
+# `/sbin/wifi up`: in OpenWrt 24.10 that command intentionally executes a
+# wireless DOWN first.  Direct wireless up is non-destructive and idempotent.
+log "reloading netifd once with wireless UCI"
+ubus call network reload >> "$LOG" 2>&1
+reload_rc=$?
+log "wireless network reload rc=$reload_rc"
+if [ "$reload_rc" -ne 0 ]; then
+	log "ERROR: netifd rejected configuration before wireless up"
+	echo failed-wireless-reload > "$STATE"
+	exit 1
+fi
+
+log "requesting non-destructive network.wireless up"
+ubus call network.wireless up '{}' >> "$LOG" 2>&1
+up_rc=$?
+log "network.wireless up rc=$up_rc"
+if [ "$up_rc" -ne 0 ]; then
+	log "ERROR: network.wireless up failed"
+	echo failed-wireless-up > "$STATE"
+	exit 1
+fi
+# From this point automatic fallback invocations must not restart wireless.
+echo requested > "$STATE"
+
+# Wait for netifd to expose both configured radios.
+tries=0
+while [ "$tries" -lt 12 ]; do
+	sleep 2
+	status="$(ubus call network.wireless status 2>>"$LOG")"
+	printf '%s\n' "$status" >> "$LOG"
+	if printf '%s' "$status" | grep -q '"radio0"' && \
+	   printf '%s' "$status" | grep -q '"radio1"'; then
+		log "netifd instantiated radio0 and radio1"
+		break
+	fi
+	tries=$((tries + 1))
+done
+if [ "$tries" -ge 12 ]; then
+	log "ERROR: netifd did not instantiate both radios"
+	uci show network >> "$LOG" 2>&1 || true
+	uci show wireless >> "$LOG" 2>&1 || true
+	echo failed-netifd > "$STATE"
+	exit 1
+fi
+
+# Do not use `iw dev` here. Check sysfs only, which cannot block on wiphy.mtx.
+i=0
+while [ "$i" -lt 20 ]; do
+	names=""
+	count=0
+	for link in /sys/class/net/*/phy80211; do
+		[ -L "$link" ] || continue
+		dev="${link%/phy80211}"
+		dev="${dev##*/}"
+		names="$names $dev"
+		count=$((count + 1))
+	done
+	if [ "$count" -ge 2 ]; then
+		log "cfg80211 AP netdevs present:$names"
+		echo ready > "$STATE"
+		exit 0
+	fi
+	i=$((i + 1))
+	sleep 1
+done
+
+# Radios are owned by netifd and setup has been requested. Do not trigger a
+# destructive automatic retry just because hostapd/netdev creation is slow.
+log "WARNING: both radios instantiated but two cfg80211 netdevs not visible yet; leaving setup in requested state"
+echo requested > "$STATE"
+exit 0

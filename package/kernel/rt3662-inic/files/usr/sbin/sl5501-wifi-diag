@@ -1,0 +1,94 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+# Runtime snapshot for the SL5501 RT3662/RT5392 iNIC cfg80211 port.
+set +e
+
+section() { printf '\n===== %s =====\n' "$1"; }
+
+section system
+uname -a
+printf 'wall-clock: '; date 2>/dev/null
+printf 'monotonic-uptime: '; cat /proc/uptime 2>/dev/null
+uptime 2>/dev/null
+cat /etc/openwrt_release 2>/dev/null
+uci show system 2>/dev/null
+
+section board-json
+ls -l /bin/board_detect /bin/config_generate 2>/dev/null
+cat /etc/board.json 2>/dev/null
+
+section network-uci
+ls -l /etc/config/network 2>/dev/null
+uci show network 2>/dev/null
+
+section netifd-ubus
+ubus list network -v 2>/dev/null
+ubus list network.wireless -v 2>/dev/null
+
+section rt3662-kernel-log
+dmesg | grep -E 'rt3662-inic|SL5501 port5|gswip .*wifi' | tail -n 500
+
+section rt3662-heartbeat-native-ap
+dmesg | grep -E 'heartbeat|profile-native|firmware-native station|RadioOn=1|RadioOn=0|AP started from uploaded OEM profile' | tail -n 300
+
+section netdev-lifecycle
+dmesg | grep -E 'add_virtual_intf|created AP netdev|del_virtual_intf|AP netdev removal completed|unregister_netdevice: waiting' | tail -n 200
+
+section links
+ip -d link show 2>/dev/null
+
+section tasks
+ps w 2>/dev/null | grep -E '(^|[ /])(netifd|hostapd|wpad|iw|sl5501-wifi)' || true
+
+section cfg80211-sysfs
+echo 'nl80211 full dumps intentionally skipped in the default diagnostic.'
+echo 'Reason: an in-progress cfg80211 operation may hold the wiphy mutex; iw phy/dev would then block.'
+for phy in /sys/class/ieee80211/phy*; do
+	[ -e "$phy" ] || continue
+	printf '%s -> %s\n' "$phy" "$(readlink -f "$phy" 2>/dev/null)"
+done
+for net in /sys/class/net/*; do
+	[ -e "$net/phy80211" ] || continue
+	printf 'wireless-netdev %s -> %s\n' "${net##*/}" "$(readlink -f "$net/phy80211" 2>/dev/null)"
+done
+
+section wireless-uci
+uci show wireless 2>/dev/null
+
+section netifd-wireless
+ubus call network.wireless status 2>/dev/null
+
+section wifi-userspace
+for f in /bin/config_generate /sbin/wifi /lib/netifd/wireless/mac80211.sh /usr/sbin/hostapd /usr/sbin/wpad /usr/bin/iwinfo; do
+	[ -e "$f" ] && ls -l "$f"
+done
+command -v wifi 2>/dev/null || true
+command -v iwinfo 2>/dev/null || true
+[ -f /tmp/sl5501-wifi-autostart ] && { echo -n 'autostart-state: '; cat /tmp/sl5501-wifi-autostart; }
+[ -f /tmp/sl5501-wifi-autostart.log ] && cat /tmp/sl5501-wifi-autostart.log
+
+section netifd-hostapd-log
+echo 'NOTE: wall-clock logread timestamps can jump when NTP corrects time; compare kernel [uptime] timestamps above.'
+logread 2>/dev/null | grep -E 'netifd|hostapd|wpad|sl5501-wifi|mac80211|Could not find PHY|wireless|config_generate|rt3662' | tail -n 700
+
+section lan-bridge
+ip -d link show br-lan 2>/dev/null
+bridge link 2>/dev/null | grep -E 'wifi|wlan|lan[1-4]' || true
+
+section module
+lsmod | grep -E 'rt3662|cfg80211|compat' || true
+
+echo
+echo '===== router-wan-dhcp ====='
+uci show dhcp 2>/dev/null || true
+uci show firewall 2>/dev/null | grep -E "(^firewall\.@zone|\.name=|\.network=|\.masq=|@forwarding|\.src=|\.dest=)" || true
+ubus call network.interface.lan status 2>/dev/null || true
+ubus call network.interface.wan status 2>/dev/null || true
+ubus call network.interface.wan6 status 2>/dev/null || true
+ip -4 addr show br-lan 2>/dev/null || true
+ip -4 route show 2>/dev/null || true
+bridge link show 2>/dev/null || true
+ps w 2>/dev/null | grep -E '(^|[ /])(dnsmasq|odhcpd|firewall4)' || true
+
+echo
+echo 'SL5501 Wi-Fi diagnostic snapshot complete.'

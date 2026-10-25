@@ -1,0 +1,9 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+# Primary boot trigger. The worker waits for OpenWrt's .config_pending marker
+# to disappear before touching UCI/netifd, avoiding a config_generate race.
+[ "$ACTION" = add ] || exit 0
+[ -d /sys/class/ieee80211/phy0 ] || exit 0
+[ -d /sys/class/ieee80211/phy1 ] || exit 0
+/usr/sbin/sl5501-wifi-autostart hotplug >/dev/null 2>&1 &
+exit 0
