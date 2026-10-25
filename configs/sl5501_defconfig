@@ -1,0 +1,23 @@
+# Sphairon/Zyxel Speedlink 5501 only - OpenWrt 24.10 / Lantiq XRX200
+CONFIG_TARGET_lantiq=y
+CONFIG_TARGET_lantiq_xrx200=y
+CONFIG_TARGET_lantiq_xrx200_DEVICE_sphairon_sl5501=y
+
+# Native cfg80211/nl80211 host driver for the on-board RT3662-iNIC / RT5392.
+CONFIG_PACKAGE_kmod-rt3662-inic=y
+CONFIG_PACKAGE_wifi-scripts=y
+CONFIG_PACKAGE_iwinfo=y
+CONFIG_PACKAGE_wpad-basic-mbedtls=y
+CONFIG_PACKAGE_iw=y
+CONFIG_PACKAGE_wireless-regdb=y
+
+# Board peripherals.
+CONFIG_PACKAGE_kmod-usb-dwc2=y
+CONFIG_PACKAGE_kmod-usb-ledtrig-usbport=y
+CONFIG_PACKAGE_kmod-ltq-tapi=y
+CONFIG_PACKAGE_kmod-ltq-vmmc=y
+
+# SL5501 bootloader support and access to the 256 KiB uboot_cfg erase sector.
+CONFIG_PACKAGE_u-boot-sl5501_sfspl=y
+CONFIG_PACKAGE_u-boot-sl5501_ram=y
+CONFIG_PACKAGE_uboot-envtools=y

@@ -1,0 +1,42 @@
+PASS: package release 22
+PASS: kernel WEXT selected
+PASS: kernel WEXT private selected
+PASS: vendor wireless-tools ABI enabled
+PASS: vendor make WEXT condition exists
+PASS: vendor comapi object linked
+PASS: netdev wireless_handlers assignment exists
+PASS: private set_mib command exported
+PASS: private ioctl table exported
+PASS: AP WEXT preflight phase 407
+PASS: AP WEXT failure phase 408
+PASS: AP WEXT ready phase 409
+PASS: AP verifies set_mib advertisement
+PASS: first required MIB remains func_off
+PASS: OEM WPA 802_1x value retained
+PASS: direct OEM wlan1 factory MAC retained
+PASS: RF open entry marker retained
+PASS: RF open return marker retained
+PASS: shell negation syntax fixed
+PASS: broken shell negation removed
+PASS: embedded netdev explicit module-exit cleanup
+PASS: cleanup limited by OEM 2G mode
+PASS: cleanup checks embedded device type
+PASS: PCI teardown guarded by real pdev
+PASS: pdev-less teardown diagnostic marker
+PASS: loader refuses stale-netdev reinsert
+PASS: loader verifies wlan1 disappeared on reload
+PASS: first DMA fix marker retained
+PASS: buffer init completion marker retained
+PASS: Linux proc_ops compatibility retained
+PASS: passphrase redaction retained
+PASS: mw5-wifi version updated
+PASS: WebUI version updated
+PASS: console banner updated
+PASS: portmode version updated
+PASS: v43.48 notes explain WEXT root cause
+PASS: shell syntax mw5-wifi
+PASS: shell syntax rtl8197f-wlan-load
+PASS: shell syntax rtl8197f-wlan-ap-test
+PASS: shell syntax mw5-portmode
+PASS: shell syntax mw5.cgi
+RESULT: 41 PASS / 0 FAIL
